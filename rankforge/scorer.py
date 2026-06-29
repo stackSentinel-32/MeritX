@@ -5,12 +5,19 @@ Scoring signals for the candidate ranking pipeline.
 
 Signal A: score_keywords(features) -> float [0.0, 1.0]
   Multi-component keyword / skill depth score.
+
+Signal B: score_tfidf_batch(features_list) -> list[float]
+  Batch TF-IDF cosine similarity against a curated JD corpus.
+  Call ONCE after pre-filtering — do NOT call per-record.
 """
 
 from __future__ import annotations
 
 import math
 from datetime import date
+
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 from rankforge.constants import (
     ALL_JD_SKILLS,
@@ -22,6 +29,22 @@ from rankforge.constants import (
     TIER3_LLM,
     TIER3_MLOPS,
 )
+
+# ---------------------------------------------------------------------------
+# JD reference text (Signal B)
+# ---------------------------------------------------------------------------
+
+JD_TEXT = """
+faiss pinecone qdrant milvus weaviate faiss pinecone qdrant milvus
+sentence-transformers vector search dense retrieval semantic search
+sentence-transformers vector search dense retrieval semantic search
+embedding retrieval ann approximate nearest neighbor vector database
+nlp bm25 elasticsearch information retrieval text ranking
+ranking model learning to rank ndcg mrr passage retrieval
+recommendation system two-tower bi-encoder cross-encoder
+applied machine learning product company python production ml
+a b testing experimentation reranking hybrid retrieval rrf
+"""
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -244,3 +267,73 @@ def score_keywords(features: dict) -> float:
     )
 
     return max(0.0, min(1.0, raw / _MAX_POSSIBLE))
+
+
+# ---------------------------------------------------------------------------
+# Signal B — score_tfidf_batch
+# ---------------------------------------------------------------------------
+
+def score_tfidf_batch(features_list: list[dict]) -> list[float]:
+    """
+    Batch TF-IDF cosine similarity of candidate texts against JD_TEXT.
+
+    IMPORTANT: This is a **batch** function. Call it ONCE on the full
+    post-filter candidate list. Do NOT call inside a per-record loop.
+
+    Parameters
+    ----------
+    features_list : list[dict]
+        List of feature dicts from ``rankforge.parser.extract_features``.
+
+    Returns
+    -------
+    list[float]
+        Cosine similarity scores in [0.0, 1.0], one per candidate,
+        in the same order as ``features_list``.
+    """
+    if not features_list:
+        return []
+
+    # ------------------------------------------------------------------
+    # Build enriched candidate texts
+    # ------------------------------------------------------------------
+    candidate_texts: list[str] = []
+
+    for features in features_list:
+        skill_set: set[str] = features.get("skill_set", set())
+
+        tier1 = [s for s in skill_set if s in TIER1_RETRIEVAL]
+        tier2 = [s for s in skill_set if s in TIER2_NLP_IR | TIER2_RECSYS]
+        tier3 = [s for s in skill_set if s in TIER3_LLM | TIER3_MLOPS]
+        title: str = features.get("current_title") or ""
+        desc: str  = (features.get("description_text") or "")[:600]
+
+        candidate_text = (
+            " ".join(tier1 * 4) + " "   # TIER1 repeated 4× for TF boost
+            + " ".join(tier2 * 2) + " " # TIER2 repeated 2×
+            + " ".join(tier3) + " "
+            + title + " " + title + " " # title 2×
+            + desc
+        )
+        candidate_texts.append(candidate_text)
+
+    # ------------------------------------------------------------------
+    # Build corpus = candidates + JD, vectorize, compute similarities
+    # ------------------------------------------------------------------
+    corpus = candidate_texts + [JD_TEXT]
+
+    vectorizer = TfidfVectorizer(
+        max_features=12000,
+        ngram_range=(1, 2),
+        min_df=1,
+        sublinear_tf=True,
+        strip_accents="unicode",
+    )
+    tfidf_matrix = vectorizer.fit_transform(corpus)
+
+    candidate_matrix = tfidf_matrix[:-1]   # all rows except last
+    jd_vector        = tfidf_matrix[-1]    # last row = JD
+
+    scores = cosine_similarity(jd_vector, candidate_matrix).flatten()
+
+    return [float(s) for s in scores]
