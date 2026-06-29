@@ -13,7 +13,9 @@ pip install -r requirements.txt
 (No model downloads needed — BM25 requires no weights)
 
 ## Reproduce submission
+```bash
 python rank.py --candidates ./candidates.jsonl --out ./submission.csv
+```
 
 ## Runtime
 ~21s on Intel i3 1005G1 (2C/4T, 1.2GHz)
