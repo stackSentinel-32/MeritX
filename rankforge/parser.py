@@ -152,15 +152,31 @@ def extract_features(raw: dict) -> dict:  # noqa: C901  (complexity expected her
     honeypot_flags: list[str] = []
 
     # ------------------------------------------------------------------
-    # Top-level scalar fields
+    # Support both flat schema (synthetic) and nested schema (real data)
+    # Real data: profile fields are under raw["profile"]
     # ------------------------------------------------------------------
+    profile: dict = raw.get("profile") or {}
+
     candidate_id = raw.get("candidate_id") or raw.get("id")
-    name = raw.get("name", "")
-    years_exp: float = float(raw.get("years_of_experience") or raw.get("years_exp") or 0)
-    current_title: str = (raw.get("current_title") or "").lower().strip()
-    current_company: str = (raw.get("current_company") or "").lower().strip()
-    current_industry: str = (raw.get("current_industry") or "").lower().strip()
-    company_size: str = raw.get("company_size") or ""
+    name = (profile.get("anonymized_name") or raw.get("name") or "")
+    years_exp: float = float(
+        profile.get("years_of_experience")
+        or raw.get("years_of_experience")
+        or raw.get("years_exp")
+        or 0
+    )
+    current_title: str = (
+        profile.get("current_title") or raw.get("current_title") or ""
+    ).lower().strip()
+    current_company: str = (
+        profile.get("current_company") or raw.get("current_company") or ""
+    ).lower().strip()
+    current_industry: str = (
+        profile.get("current_industry") or raw.get("current_industry") or ""
+    ).lower().strip()
+    company_size: str = (
+        profile.get("current_company_size") or raw.get("company_size") or ""
+    )
 
     # ------------------------------------------------------------------
     # Skills
@@ -170,8 +186,13 @@ def extract_features(raw: dict) -> dict:  # noqa: C901  (complexity expected her
     skill_map: dict[str, dict] = {}
 
     # Collect redrob_signals assessment scores for skill augmentation
+    # Real data key: "skill_assessment_scores"; synthetic key: "skill_assessments"
     redrob_signals: dict = raw.get("redrob_signals") or {}
-    signal_assessments: dict = redrob_signals.get("skill_assessments") or {}
+    signal_assessments: dict = (
+        redrob_signals.get("skill_assessment_scores")
+        or redrob_signals.get("skill_assessments")
+        or {}
+    )
 
     for skill_item in skills_raw:
         sname_raw: str = skill_item.get("name") or skill_item.get("skill") or ""
@@ -319,9 +340,13 @@ def extract_features(raw: dict) -> dict:  # noqa: C901  (complexity expected her
 
     # ------------------------------------------------------------------
     # Platform behavioural signals
+    # Supports both flat schema (synthetic) and nested redrob_signals (real)
     # ------------------------------------------------------------------
-    def _float_or_sentinel(key: str, sentinel: float = -1.0) -> float:
-        v = raw.get(key)
+    def _sig(key_real: str, key_flat: str, sentinel: float = -1.0) -> float:
+        """Read from redrob_signals first, then flat raw, else sentinel."""
+        v = redrob_signals.get(key_real) if redrob_signals else None
+        if v is None:
+            v = raw.get(key_flat)
         if v is None:
             return sentinel
         try:
@@ -329,21 +354,44 @@ def extract_features(raw: dict) -> dict:  # noqa: C901  (complexity expected her
         except (TypeError, ValueError):
             return sentinel
 
-    last_active_raw = _parse_date(raw.get("last_active_date"))
+    last_active_raw = _parse_date(
+        redrob_signals.get("last_active_date") or raw.get("last_active_date")
+    )
     last_active_days: int = (today - last_active_raw).days if last_active_raw else -1
 
-    notice_days: int = int(raw.get("notice_period_days") or 0)
-    response_rate: float = _float_or_sentinel("recruiter_response_rate")
-    avg_response_hrs: float = _float_or_sentinel("avg_response_time_hours")
-    github_score: float = _float_or_sentinel("github_activity_score")
-    interview_rate: float = _float_or_sentinel("interview_completion_rate")
-    offer_acceptance: float = _float_or_sentinel("offer_acceptance_rate")
+    notice_days: int = int(
+        redrob_signals.get("notice_period_days")
+        or raw.get("notice_period_days")
+        or 0
+    )
+    response_rate: float  = _sig("recruiter_response_rate",  "recruiter_response_rate")
+    avg_response_hrs: float = _sig("avg_response_time_hours", "avg_response_time_hours")
+    github_score: float   = _sig("github_activity_score",    "github_activity_score")
+    interview_rate: float = _sig("interview_completion_rate", "interview_completion_rate")
+    offer_acceptance: float = _sig("offer_acceptance_rate",  "offer_acceptance_rate")
 
-    open_to_work: bool = bool(raw.get("open_to_work", False))
-    willing_relocate: bool = bool(raw.get("willing_to_relocate", False))
-    work_mode: str = (raw.get("work_mode") or "").lower().strip()
+    # open_to_work: real key is "open_to_work_flag"; synthetic key is "open_to_work"
+    open_to_work: bool = bool(
+        redrob_signals.get("open_to_work_flag")
+        or raw.get("open_to_work")
+        or False
+    )
+    willing_relocate: bool = bool(
+        redrob_signals.get("willing_to_relocate")
+        or raw.get("willing_to_relocate")
+        or False
+    )
+    work_mode: str = (
+        redrob_signals.get("preferred_work_mode")
+        or raw.get("work_mode")
+        or ""
+    ).lower().strip()
 
-    profile_raw = raw.get("profile_completeness_score")
+    # profile_completeness_score: real is in redrob_signals; synthetic is flat
+    profile_raw = (
+        redrob_signals.get("profile_completeness_score")
+        or raw.get("profile_completeness_score")
+    )
     profile_complete: float = 0.0
     if profile_raw is not None:
         try:
@@ -353,16 +401,26 @@ def extract_features(raw: dict) -> dict:  # noqa: C901  (complexity expected her
 
     # ------------------------------------------------------------------
     # Location / Geo
+    # Real data: location and country are inside profile dict
     # ------------------------------------------------------------------
-    country: str = (raw.get("country") or "").lower().strip()
-    location: str = (raw.get("location") or raw.get("city") or "").lower().strip()
+    country: str = (
+        profile.get("country") or raw.get("country") or ""
+    ).lower().strip()
+    location: str = (
+        profile.get("location") or raw.get("location") or raw.get("city") or ""
+    ).lower().strip()
     geo_bucket: str = _geo_bucket(location, country)
 
     # ------------------------------------------------------------------
-    # Salary
+    # Salary — real data uses expected_salary_range_inr_lpa dict
     # ------------------------------------------------------------------
-    salary_min: float = _float_or_sentinel("expected_salary_min", 0.0)
-    salary_max: float = _float_or_sentinel("expected_salary_max", 0.0)
+    salary_range: dict = redrob_signals.get("expected_salary_range_inr_lpa") or {}
+    salary_min: float = float(
+        salary_range.get("min") or raw.get("expected_salary_min") or 0
+    )
+    salary_max: float = float(
+        salary_range.get("max") or raw.get("expected_salary_max") or 0
+    )
     salary_inverted: bool = salary_min > salary_max and salary_min > 0 and salary_max > 0
 
     if salary_inverted:
@@ -372,8 +430,12 @@ def extract_features(raw: dict) -> dict:  # noqa: C901  (complexity expected her
     # ------------------------------------------------------------------
     # Verification flags
     # ------------------------------------------------------------------
-    verified_email: bool = bool(raw.get("verified_email", False))
-    verified_phone: bool = bool(raw.get("verified_phone", False))
+    verified_email: bool = bool(
+        redrob_signals.get("verified_email") or raw.get("verified_email") or False
+    )
+    verified_phone: bool = bool(
+        redrob_signals.get("verified_phone") or raw.get("verified_phone") or False
+    )
 
     # ------------------------------------------------------------------
     # Assemble and return
