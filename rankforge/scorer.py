@@ -9,6 +9,11 @@ Signal A: score_keywords(features) -> float [0.0, 1.0]
 Signal B: score_tfidf_batch(features_list) -> list[float]
   Batch TF-IDF cosine similarity against a curated JD corpus.
   Call ONCE after pre-filtering — do NOT call per-record.
+
+Signal C: score_bm25_batch(features_list) -> list[float]
+  BM25Okapi relevance against a curated JD query.
+  Replaces semantic embedding model — no torch, no model loading.
+  Call ONCE after pre-filtering — do NOT call per-record.
 """
 
 from __future__ import annotations
@@ -16,6 +21,7 @@ from __future__ import annotations
 import math
 from datetime import date
 
+from rank_bm25 import BM25Okapi
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -337,3 +343,118 @@ def score_tfidf_batch(features_list: list[dict]) -> list[float]:
     scores = cosine_similarity(jd_vector, candidate_matrix).flatten()
 
     return [float(s) for s in scores]
+
+
+# ---------------------------------------------------------------------------
+# Signal C — score_bm25_batch
+# ---------------------------------------------------------------------------
+
+# Core JD query tokens (used once at module level — no recomputation)
+_BM25_JD_QUERY: list[str] = [
+    "faiss", "pinecone", "qdrant", "milvus", "weaviate",
+    "sentence-transformers", "vector", "search", "dense", "retrieval",
+    "semantic", "embedding", "nlp", "bm25", "elasticsearch",
+    "ranking", "recommendation", "learning", "to", "rank",
+    "ndcg", "mrr", "python", "production", "applied", "machine", "learning",
+]
+
+
+def score_bm25_batch(features_list: list[dict]) -> list[float]:
+    """
+    BM25Okapi relevance score of each candidate against a curated JD query.
+
+    Replaces semantic embedding model entirely — no torch, no model loading.
+
+    IMPORTANT: This is a **batch** function. Call it ONCE on the full
+    post-filter candidate list. Do NOT call inside a per-record loop.
+
+    Design
+    ------
+    - TIER1 skills are repeated by the number of ML roles the candidate
+      held. More ML roles = higher TF for core retrieval terms.
+    - TIER2 skills are repeated 2×.
+    - Title tokens and description tokens are included for breadth.
+    - Raw BM25 scores are min-max normalised to [0, 1].
+
+    Parameters
+    ----------
+    features_list : list[dict]
+        List of feature dicts from ``rankforge.parser.extract_features``.
+
+    Returns
+    -------
+    list[float]
+        Normalised BM25 scores in [0.0, 1.0], one per candidate,
+        in the same order as ``features_list``.
+    """
+    if not features_list:
+        return []
+
+    # ------------------------------------------------------------------
+    # Build tokenised corpus (one list-of-tokens per candidate)
+    # ------------------------------------------------------------------
+    corpus: list[list[str]] = []
+
+    def _tokenize_skills(skills: list[str]) -> list[str]:
+        """Split multi-word skill strings into individual tokens."""
+        tokens: list[str] = []
+        for s in skills:
+            tokens.extend(s.split())
+        return tokens
+
+    for features in features_list:
+        skill_set: set[str]      = features.get("skill_set", set())
+        career_roles: list[dict] = features.get("career_roles", [])
+
+        tier1 = [s for s in skill_set if s in TIER1_RETRIEVAL]
+        tier2 = [s for s in skill_set if s in TIER2_NLP_IR | TIER2_RECSYS]
+
+        # ML-role depth signal: more ML roles → more repetitions of tier1
+        ml_roles = sum(1 for r in career_roles if r.get("has_ml_signal"))
+        tier1_repeated = tier1 * max(1, ml_roles)
+
+        # Split multi-word skills into individual tokens so they match
+        # single-word BM25 query terms (e.g. "dense retrieval" → ["dense", "retrieval"])
+        title_tokens = (features.get("current_title") or "").lower().split()
+        desc_tokens  = (features.get("description_text") or "").split()[:150]
+
+        candidate_tokens = (
+            _tokenize_skills(tier1_repeated)
+            + _tokenize_skills(tier2 * 2)
+            + title_tokens * 2
+            + desc_tokens
+        )
+        # BM25Okapi requires non-empty doc lists; guard with placeholder
+        corpus.append(candidate_tokens if candidate_tokens else ["_empty_"])
+
+    # Inject two dummy negative documents so the corpus always has N≥3.
+    # BM25Okapi uses a modified IDF: log((N - df + 0.5) / (df + 0.5)).
+    # With N=2 and df=1, IDF = log(1.5/1.5) = 0 — every score collapses.
+    # Adding irrelevant docs raises N while df stays low → positive IDF.
+    _NEGATIVE_DOC = ["payroll", "procurement", "logistics", "invoice", "compliance"]
+    corpus.append(_NEGATIVE_DOC)
+    corpus.append(["administration", "clerical", "scheduling", "budgeting"])
+
+    # ------------------------------------------------------------------
+    # Build BM25 index and score against JD query
+    # ------------------------------------------------------------------
+    bm25 = BM25Okapi(corpus)
+    all_scores: list[float] = list(bm25.get_scores(_BM25_JD_QUERY))
+
+    # Only keep scores for real candidates (exclude the 2 dummy docs)
+    raw_scores = all_scores[: len(features_list)]
+
+    # ------------------------------------------------------------------
+    # Min-max normalise to [0, 1]
+    # ------------------------------------------------------------------
+    max_s = max(raw_scores)
+    min_s = min(raw_scores)
+
+    if max_s > min_s:
+        normalized = [(s - min_s) / (max_s - min_s) for s in raw_scores]
+    else:
+        # All scores identical (degenerate corpus) → neutral 0.5
+        normalized = [0.5] * len(raw_scores)
+
+    return normalized
+
