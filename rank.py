@@ -79,13 +79,13 @@ def main() -> None:
     )
     parser.add_argument(
         "--candidates",
-        required=True,
+        default="data/candidates.jsonl",
         metavar="PATH",
         help="Path to input .jsonl file (one candidate JSON per line)",
     )
     parser.add_argument(
         "--out",
-        required=True,
+        default="submission.csv",
         metavar="PATH",
         help="Path to output CSV file (top-100 ranked candidates)",
     )
