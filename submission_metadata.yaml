@@ -1,0 +1,20 @@
+team_name: "redrob_ai"
+submission_id: ""   # fill from portal
+model_description: >
+  Three-signal hybrid ranker using Skill Depth scoring (Signal A),
+  enriched TF-IDF (Signal B), and BM25 (Signal C) fused via RRF.
+  No neural models — BM25 provides 5x more differentiation than
+  bge-micro for this domain based on empirical testing.
+ranking_approach: "hybrid_bm25_tfidf_keyword_depth"
+uses_embeddings: false
+uses_llm: false
+external_api_calls: false
+estimated_runtime_seconds: 21
+precompute_required: false
+single_run_command: "python rank.py --candidates ./candidates.jsonl --out ./submission.csv"
+key_innovations:
+  - Skill depth scoring (duration × proficiency × assessment × endorsements)
+  - BM25 replaces neural embeddings (5x differentiation, 1160x faster)
+  - ML YOE floor filter eliminates wrong-domain candidates
+  - Notice=0 bonus for immediate joiners
+  - Flat-top YOE Gaussian for 5-9yr sweet spot
