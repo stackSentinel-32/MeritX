@@ -1,0 +1,26 @@
+# Environments
+venv/
+env/
+.env/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Data
+data/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# IDEs
+.idea/
+.vscode/
+
+# Distribution / packaging / caching
+build/
+dist/
+*.egg-info/
+.pytest_cache/
