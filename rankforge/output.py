@@ -283,6 +283,6 @@ def write_csv(ranked_candidates: list[dict], output_path: str | Path) -> None:
             writer.writerow([
                 r["candidate_id"],
                 r["rank"],
-                r["score"],
+                round(float(r["score"]), 6),
                 r["reasoning"],
             ])

@@ -272,7 +272,7 @@ def main() -> None:
         csv_rows.append({
             "candidate_id": rec["candidate_id"],
             "rank":         rank,
-            "score":        rec["final"],
+            "score":        round(float(rec["final"]), 6),
             "reasoning":    reasoning,
         })
 
