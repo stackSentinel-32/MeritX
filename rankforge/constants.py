@@ -40,6 +40,17 @@ NEGATIVE_CV_SPEECH = {
     "diffusion model", "stable diffusion"
 }
 
+BIG_TECH_GLOBAL = {
+    "google", "meta", "facebook", "amazon", "microsoft", "apple",
+    "netflix", "linkedin", "salesforce", "adobe", "nvidia", "intel",
+    "ibm", "oracle", "twitter", "uber", "airbnb", "stripe",
+    "atlassian", "spotify", "snap", "pinterest", "paypal",
+    "shopify", "zoom", "slack", "dropbox", "workday",
+    "servicenow", "twilio", "datadog", "mongodb inc", "elastic",
+    "confluent", "databricks", "snowflake inc", "palantir",
+    "samsung", "tencent", "alibaba", "bytedance", "baidu"
+}
+
 WITCH_COMPANIES = {
     "tcs", "wipro", "infosys", "hcl", "cognizant", "accenture",
     "tech mahindra", "mphasis", "hexaware", "ltimindtree", "capgemini"

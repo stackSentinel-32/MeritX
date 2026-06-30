@@ -38,6 +38,7 @@ _TYPE_DISPLAY: dict[str, str] = {
     "product_startup": "startup",
     "startup":         "startup",
     "product":         "product",
+    "big_tech":        "big tech",
     "witch":           "outsourcing",
     "consulting":      "consulting",
     "other":           "other",

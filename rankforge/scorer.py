@@ -67,6 +67,7 @@ _PROFICIENCY_MULT: dict[str, float] = {
 _COMPANY_ML_MULT: dict[str, float] = {
     "witch":           0.25,
     "consulting":      0.45,
+    "big_tech":        0.85,
     "product_startup": 1.00,
     "startup":         0.90,
     "product":         0.85,

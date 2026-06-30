@@ -17,6 +17,7 @@ from typing import Any
 from dateutil import parser as dateutil_parser
 
 from rankforge.constants import (
+    BIG_TECH_GLOBAL,
     PREFERRED_CITIES,
     PRODUCT_STARTUPS_INDIA,
     TIER1_RETRIEVAL,
@@ -56,6 +57,8 @@ def _classify_company(company_lower: str, industry_lower: str, size: str) -> str
     """Return company_type string based on classification rules (ordered)."""
     if company_lower in WITCH_COMPANIES:
         return "witch"
+    if company_lower in BIG_TECH_GLOBAL:
+        return "big_tech"
     if company_lower in PRODUCT_STARTUPS_INDIA:
         return "product_startup"
     if industry_lower == "software" and size in {"11-50", "51-200"}:
