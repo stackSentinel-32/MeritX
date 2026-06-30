@@ -420,12 +420,29 @@ def score_bm25_batch(features_list: list[dict]) -> list[float]:
         title_tokens = (features.get("current_title") or "").lower().split()
         desc_tokens  = (features.get("description_text") or "").split()[:150]
 
+        # Boost skills that have been formally assessed.
+        # Repetition count is proportional to assessment score (4x at ≥90%).
+        assessed_boost: list[str] = []
+        for skill_name, assess_score in (features.get("assessment_scores") or {}).items():
+            skill_lower = skill_name.lower()
+            if skill_lower in TIER1_RETRIEVAL or skill_lower in TIER2_NLP_IR:
+                if assess_score >= 0.90:
+                    assessed_boost.extend([skill_lower] * 4)
+                elif assess_score >= 0.75:
+                    assessed_boost.extend([skill_lower] * 3)
+                elif assess_score >= 0.60:
+                    assessed_boost.extend([skill_lower] * 2)
+                else:
+                    assessed_boost.extend([skill_lower] * 1)
+
         candidate_tokens = (
             _tokenize_skills(tier1_repeated)
             + _tokenize_skills(tier2 * 2)
+            + assessed_boost
             + title_tokens * 2
             + desc_tokens
         )
+
         # BM25Okapi requires non-empty doc lists; guard with placeholder
         corpus.append(candidate_tokens if candidate_tokens else ["_empty_"])
 
