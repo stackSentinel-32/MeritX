@@ -59,9 +59,10 @@ a b testing experimentation reranking hybrid retrieval rrf
 _MAX_POSSIBLE: float = 60.0
 
 _PROFICIENCY_MULT: dict[str, float] = {
-    "advanced":     1.0,
-    "intermediate": 0.7,
-    "beginner":     0.3,
+    "expert":       1.20,
+    "advanced":     1.00,
+    "intermediate": 0.70,
+    "beginner":     0.30,
 }
 
 _COMPANY_ML_MULT: dict[str, float] = {
@@ -170,8 +171,8 @@ def score_keywords(features: dict) -> float:
         if tier_w == 0.0:
             continue  # not a relevant skill
 
-        prof     = _proficiency_mult = _PROFICIENCY_MULT.get(
-                       skill_data.get("proficiency", ""), 0.3)
+        prof     = _PROFICIENCY_MULT.get(
+                       skill_data.get("proficiency", "beginner"), 0.30)
         months   = skill_data.get("duration_months", 0) or 0
         dur_m    = _duration_multiplier(months)
 
