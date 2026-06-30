@@ -186,11 +186,22 @@ def score_keywords(features: dict) -> float:
         total_skill_points += skill_points
 
     # ------------------------------------------------------------------
+    # Step 1b — Assessment confidence multiplier on total skill points
+    # Verified experts get a global lift on their entire skill score.
+    # ------------------------------------------------------------------
+    if assessment_scores:
+        best_conf = max(assessment_scores.values())
+        if best_conf >= 0.85:
+            total_skill_points *= 1.15   # +15% for verified expert
+        elif best_conf >= 0.70:
+            total_skill_points *= 1.05   # +5% for verified proficient
+
+    # ------------------------------------------------------------------
     # Step 2 — Global assessment bonus
     # ------------------------------------------------------------------
     if assessment_scores:
         best_assess = max(assessment_scores.values())
-        assessment_global_bonus = max(0.0, (best_assess - 0.5) * 8.0)
+        assessment_global_bonus = max(0.0, (best_assess - 0.5) * 15.0)
     else:
         assessment_global_bonus = 0.0
 
